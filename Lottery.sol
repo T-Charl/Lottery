@@ -33,6 +33,7 @@ contract Lottery is ReentrancyGuard, VRFConsumerBaseV2Plus {
     }
 
     mapping(uint256 => RequestStatus) public s_requests;
+    mapping(uint => bool) public numberExists; // USED TO CHECK FOR DUPLICATES IN FINAL NUMBER LIST
     uint256 public lastRequestId;
 
     // Lottery Settings
@@ -41,7 +42,8 @@ contract Lottery is ReentrancyGuard, VRFConsumerBaseV2Plus {
     uint256 public currentTicketId;
     uint256 public ticketPrice = 0.001 ether;
     uint256 public serviceFee = 3000; // BASIS POINTS 3000 is 30%
-    uint256 public numberWinner;
+    uint256 public numberWinner; // Keeps track of lottery
+    uint[6] private finalNumbers;
 
     enum Status {
         Open,
@@ -189,25 +191,70 @@ contract Lottery is ReentrancyGuard, VRFConsumerBaseV2Plus {
 
     // Draw numbers function
     function drawNumbers() external onlyOwner nonReentrant {
-        require(_lotteries[currentLotteryId].status == Status.Close, "Lottery not close");
-        uint256[] memory numArray = s_requests[lastRequestId].randomWords;
-        // uint num1 = numArray[0] % 49;
-        // uint num2 = numArray[1] % 49;
-        // uint num3 = numArray[2] % 49;
-        // uint num4 = numArray[3] % 49;
-        // uint num5 = numArray[4] % 49;
-        // uint num6 = numArray[5] % 49;
-        uint[6] memory finalNumbers;
-        for (uint i = 0; i < finalNumbers.length; i++){
-            // if (finalNumbers[i] == 0) {
-            //     finalNumbers[i] = 1;
-            // }
-            finalNumbers[i] = (numArray[i] % 49) + 1;
+        require(_lotteries[currentLotteryId].status == Status.Close, "Lottery is not closed");
+        uint8[6] memory numArray = [1,2,3,4,5,6];//s_requests[lastRequestId].randomWords;
+        
+        for (uint i = 0; i < finalNumbers.length; i++) {
+            uint newNumber = (numArray[i] % 49) + 1;
+            while (numberExists[newNumber]) {
+                newNumber = (newNumber % 49) + 1;
+            }
+            finalNumbers[i] = newNumber;
+            numberExists[newNumber] = true;
         }
+        uint[6] memory sortedNums;
+        sortedNums = sortArrays(finalNumbers);
+        finalNumbers = sortedNums;
         _lotteries[currentLotteryId].winningNumbers = finalNumbers;
-        _lotteries[currentLotteryId].status = Status.Claimable;
+        _lotteries[currentLotteryId].totalPayout = _lotteries[currentLotteryId].transferJackpot;
         emit LotteryWinnerNumber(currentLotteryId, finalNumbers);
-        // return finalNumbers;
+    }
+
+    function countWinners( uint256 _lottoId) external onlyOwner {
+       require(_lotteries[_lottoId].status == Status.Close, "Lottery not close");
+       require(_lotteries[_lottoId].status != Status.Claimable, "Lottery Already Counted");
+       delete numberWinner;
+       uint256 firstTicketId = _lotteries[_lottoId].firstTicketId;
+       uint256 lastTicketId = _lotteries[_lottoId].lastTicketId;
+       uint[6] memory winOrder;
+       winOrder = sortArrays(finalNumbers);
+       bytes32 encodeWin = keccak256(abi.encodePacked(winOrder));
+       uint256 i = firstTicketId;
+        for (i; i < lastTicketId; i++) {
+            address buyer = _tickets[i].owner;
+            uint[6] memory userNum = _tickets[i].chooseNumbers;
+            bytes32 encodeUser = keccak256(abi.encodePacked(userNum));
+              if (encodeUser == encodeWin) {
+                  numberWinner++;
+                  _lotteries[_lottoId].winnerCount = numberWinner;
+                  _winnersPerLotteryId[buyer][_lottoId] = 1;
+              }
+        }
+        if (numberWinner == 0){
+            uint256 nextLottoId = (currentLotteryId).add(1);
+            _lotteries[nextLottoId].transferJackpot = _lotteries[currentLotteryId].totalPayout;
+        }
+    _lotteries[currentLotteryId].status = Status.Claimable;
+   }
+
+    function sortArrays(uint[6] memory numbers) internal pure returns (uint[6] memory) {
+            bool swapped;
+        for (uint i = 1; i < numbers.length; i++) {
+            swapped = false;
+            for (uint j = 0; j < numbers.length - i; j++) {
+                uint next = numbers[j + 1];
+                uint actual = numbers[j];
+                if (next < actual) {
+                    numbers[j] = next;
+                    numbers[j + 1] = actual;
+                    swapped = true;
+                }
+            }
+            if (!swapped) {
+                return numbers;
+            }
+        }
+        return numbers;
     }
 
     function getRequestStatus(
