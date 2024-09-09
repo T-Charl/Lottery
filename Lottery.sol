@@ -3,23 +3,24 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+// import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
-import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
+import {VRFConsumerBaseV2Plus} from "@chainlink/contracts@1.2.0/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
+import {VRFV2PlusClient} from "@chainlink/contracts@1.2.0/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 
-contract Lottery is ReentrancyGuard, Ownable, VRFConsumerBaseV2 {
-    using SafeERC20 for IERC20;
+contract Lottery is ReentrancyGuard, VRFConsumerBaseV2Plus {
+    // using SafeERC20 for IERC20;
     using SafeMath for uint256;
 
     // ChainLink VRFv2 Subscription Settings
     VRFCoordinatorV2Interface COORDINATOR;
 
-    uint64 private s_subscriptionId;
-    address private vrfCoordinator = 0x7a1BaC17Ccc5b313516C5E16fb24f7659aA5ebed;
-    bytes32 private keyHash = 0x4b09e658ed251bcafeebbc69400383d49f344ace09b9576fe248bb02c003fe9f;
+    // These values (sub_id & vrfCoord) are specific to the sepolia testnet
+    uint256 private s_subscriptionId;
+    address private vrfCoordinator = 0x9DdfaCa8183c41ad55329BdeeD9F6A8d53168B1B;
+    bytes32 private keyHash = 0x787d74caea10b2b357790d5b5247c2f63d1d91572a9846f780606e4d953677ae;
     uint16 private requestConfirmations = 3;
     uint32 private numWords = 6;
     uint32 private callbackGasLimit = 2500000;
@@ -35,10 +36,10 @@ contract Lottery is ReentrancyGuard, Ownable, VRFConsumerBaseV2 {
     uint256 public lastRequestId;
 
     // Lottery Settings
-    IERC20 public paytoken;
+    // IERC20 public paytoken;
     uint256 public currentLotteryId;
     uint256 public currentTicketId;
-    uint256 public ticketPrice = 10 ether;
+    uint256 public ticketPrice = 0.001 ether;
     uint256 public serviceFee = 3000; // BASIS POINTS 3000 is 30%
     uint256 public numberWinner;
 
@@ -67,7 +68,7 @@ contract Lottery is ReentrancyGuard, Ownable, VRFConsumerBaseV2 {
         uint[6] chooseNumbers;
     }
 
-    mapping(uint256 => LotteryInfo) private _lotteries;
+    mapping(uint256 => LotteryInfo) public _lotteries;
     mapping(uint256 => Ticket) private _tickets;
     mapping(address => mapping(uint256 => uint256[])) private _userTicketIdsPerLotteryId;
     mapping(address => mapping(uint256 => uint256)) public _winnersPerLotteryId;
@@ -91,21 +92,21 @@ contract Lottery is ReentrancyGuard, Ownable, VRFConsumerBaseV2 {
         uint[6] chooseNumbers
     );
 
-    constructor(uint64 subscriptionId) 
-        VRFConsumerBaseV2(vrfCoordinator)
-        Ownable(msg.sender) // Pass the initial owner address
+    constructor(uint256 subscriptionId) 
+        VRFConsumerBaseV2Plus(vrfCoordinator)
     {
         COORDINATOR = VRFCoordinatorV2Interface(vrfCoordinator);
         s_owner = msg.sender;
         s_subscriptionId = subscriptionId;
-        paytoken = IERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F); // DAI token address
+        // paytoken = IERC20(0x3343E389f12061d849830fe8c00f386c8e1c000A); // ABC Lottery Token (ALT) token address
     }
+
 
     // Open lottery function
     function openLottery() external onlyOwner nonReentrant {
         currentLotteryId++;
         currentTicketId++;
-        uint256 fundJackpot = (_lotteries[currentLotteryId].transferJackpot).add(1000 ether);
+        uint256 fundJackpot = (_lotteries[currentLotteryId].transferJackpot);
         uint256 transferJackpot;
         uint256 totalPayout;
         uint256 lastTicketId;
@@ -113,7 +114,7 @@ contract Lottery is ReentrancyGuard, Ownable, VRFConsumerBaseV2 {
         _lotteries[currentLotteryId] = LotteryInfo({
             status: Status.Open,
             startTime: block.timestamp,
-            endTime: (block.timestamp).add(1 days),
+            endTime: (block.timestamp).add(10 seconds),
             firstTicketId: currentTicketId,
             transferJackpot: fundJackpot,
             winningNumbers: [uint(0), uint(0), uint(0), uint(0), uint(0), uint(0)],
@@ -136,9 +137,9 @@ contract Lottery is ReentrancyGuard, Ownable, VRFConsumerBaseV2 {
 
     // Buy tickets function
     function buyTickets(uint[6] memory numbers) public payable nonReentrant {
-        uint256 walletBalance = paytoken.balanceOf(msg.sender);
-        require(walletBalance >= ticketPrice, "Funds not available to complete transaction");
-        paytoken.transferFrom(address(msg.sender), address(this), ticketPrice);
+        // uint256 walletBalance = paytoken.balanceOf(msg.sender);
+        require(msg.value >= ticketPrice, "Funds not available to complete transaction");
+        // paytoken.transferFrom(address(msg.sender), address(this), ticketPrice);
         // Calculate Commission Fee
         uint256 commisionFee = (ticketPrice.mul(serviceFee)).div(10000);
         // Platform commission per ticket sale
@@ -163,12 +164,19 @@ contract Lottery is ReentrancyGuard, Ownable, VRFConsumerBaseV2 {
 
         // Request Id for ChainLink VRF
         uint256 requestId;
-        requestId = COORDINATOR.requestRandomWords(
-            keyHash,
-            s_subscriptionId,
-            requestConfirmations,
-            callbackGasLimit,
-            numWords
+        requestId = s_vrfCoordinator.requestRandomWords(
+            VRFV2PlusClient.RandomWordsRequest({
+                keyHash: keyHash,
+                subId: s_subscriptionId,
+                requestConfirmations: requestConfirmations,
+                callbackGasLimit: callbackGasLimit,
+                numWords: numWords,
+                extraArgs: VRFV2PlusClient._argsToBytes(
+                    VRFV2PlusClient.ExtraArgsV1({
+                        nativePayment: false // KEEP THIS FALSE SO THAT IS USES THE SUBSCRIPTION BALANCE
+                    })
+                )
+            })
         );
         s_requests[requestId] = RequestStatus({
             randomWords: new uint256[](numWords),
@@ -183,26 +191,85 @@ contract Lottery is ReentrancyGuard, Ownable, VRFConsumerBaseV2 {
     function drawNumbers() external onlyOwner nonReentrant {
         require(_lotteries[currentLotteryId].status == Status.Close, "Lottery not close");
         uint256[] memory numArray = s_requests[lastRequestId].randomWords;
-        uint num1 = numArray[0] % 49;
-        uint num2 = numArray[1] % 49;
-        uint num3 = numArray[2] % 49;
-        uint num4 = numArray[3] % 49;
-        uint num5 = numArray[4] % 49;
-        uint num6 = numArray[5] % 49;
-        uint[6] memory finalNumbers = [num1, num2, num3, num4, num5, num6];
+        // uint num1 = numArray[0] % 49;
+        // uint num2 = numArray[1] % 49;
+        // uint num3 = numArray[2] % 49;
+        // uint num4 = numArray[3] % 49;
+        // uint num5 = numArray[4] % 49;
+        // uint num6 = numArray[5] % 49;
+        uint[6] memory finalNumbers;
         for (uint i = 0; i < finalNumbers.length; i++){
-            if (finalNumbers[i] == 0) {
-                finalNumbers[i] = 1;
-            }
+            // if (finalNumbers[i] == 0) {
+            //     finalNumbers[i] = 1;
+            // }
+            finalNumbers[i] = (numArray[i] % 49) + 1;
         }
         _lotteries[currentLotteryId].winningNumbers = finalNumbers;
         _lotteries[currentLotteryId].status = Status.Claimable;
         emit LotteryWinnerNumber(currentLotteryId, finalNumbers);
+        // return finalNumbers;
     }
 
-    function fulfillRandomWords(uint256 requestId, uint256[] memory randomWords) internal override {
+    function getRequestStatus(
+        uint256 _requestId
+    ) internal view returns (bool fulfilled, uint256[] memory randomWords) {
+        require(s_requests[_requestId].exists, "request not found");
+        RequestStatus memory request = s_requests[_requestId];
+        return (request.fulfilled, request.randomWords);
+    }
+
+    function getRandomWords(
+        uint256 _requestId
+    ) internal view returns (uint256[] memory randomWords) {
+        require(s_requests[_requestId].exists, "request not found");
+        RequestStatus memory request = s_requests[_requestId];
+        return (request.randomWords);
+    }
+
+    function getWinningNumbers(uint _lotteryID) external view returns(uint[6] memory) {
+        return _lotteries[_lotteryID].winningNumbers;
+    }
+
+    /**
+   Chainlink VRFv2 Specific functions required in the smart contract for full functionality.
+    */
+
+    function getRequestStatus(
+    ) external view returns (bool fulfilled, uint256[] memory randomWords) {
+        require(s_requests[lastRequestId].exists, "request not found");
+        RequestStatus memory request = s_requests[lastRequestId];
+        return (request.fulfilled, request.randomWords);
+    }
+
+    function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal override {
         require(s_requests[requestId].exists, "Request not found");
         s_requests[requestId].randomWords = randomWords;
         s_requests[requestId].fulfilled = true;
+    }
+
+    function claimPrize(uint256 _lottoId) external nonReentrant {
+        require(_lotteries[_lottoId].status == Status.Claimable, "Not Payable");
+        require(_lotteries[_lottoId].winnerCount > 0, "Not Payable");
+        require(_winnersPerLotteryId[msg.sender][_lottoId] == 1, "Not Payable");
+        uint256 winners = _lotteries[_lottoId].winnerCount;
+        uint256 payout = (_lotteries[_lottoId].totalPayout).div(winners);
+        // paytoken.safeTransfer(msg.sender, payout);
+        payable(owner()).transfer(payout);
+        _winnersPerLotteryId[msg.sender][_lottoId] = 0;
+   }
+
+
+    function getBalance() external view onlyOwner returns(uint256) {
+        // return paytoken.balanceOf(address(this));
+        return address(this).balance;
+    }
+
+    // function fundContract(uint256 amount) external onlyOwner {
+    //     paytoken.safeTransferFrom(address(msg.sender), address(this), amount);
+    // }
+
+    function withdraw() public onlyOwner() {
+        payable(owner()).transfer(address(this).balance);
+    //   paytoken.safeTransfer(address(msg.sender), (paytoken.balanceOf(address(this))));
     }
 }
