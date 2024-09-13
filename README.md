@@ -110,8 +110,8 @@ Your prize will be transferred to your wallet if you're a winner.
 
 ## Contract Addresses
 
-**Lottery Contract Address**: 0x0cE4961136171C7FEC7e0cEac960Aecb23443dE9
-**ALT Token Contract Address**: 0x1E50E567D61BBa29309A066088Ef623Ea718a956
+* **Lottery Contract Address**: 0x0cE4961136171C7FEC7e0cEac960Aecb23443dE9
+* **ALT Token Contract Address**: 0x1E50E567D61BBa29309A066088Ef623Ea718a956
 
 Make sure you have sufficient ALT tokens and Sepolia ETH to interact with the contract.
 Notes
