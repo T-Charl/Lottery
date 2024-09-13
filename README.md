@@ -74,8 +74,8 @@ Before purchasing tickets, you need to allow the Lottery contract to spend your 
 1. Go to the ALT token contract on Sepolia Etherscan.
 2. Navigate to the Write Contract tab and connect MetaMask.
 3. Find the approve function and input the following details:
-   * `**spender**`: Enter the Lottery contract's address.
-   * `**amount**`: Specify the number of ALT tokens you are allowing the Lottery contract to spend (in wei). Ensure                        this amount covers your ticket purchase.
+   * **`spender`**: Enter the Lottery contract's address.
+   * **`amount`**: Specify the number of ALT tokens you are allowing the Lottery contract to spend (in wei). Ensure                        this amount covers your ticket purchase.
 4. Submit the transaction and confirm it in MetaMask.
 
 3. **Buy Lottery Tickets**
